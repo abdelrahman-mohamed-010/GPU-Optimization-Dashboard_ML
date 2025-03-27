@@ -1,2 +1,6 @@
 paramiko
 python-dotenv
+pynvml
+pyopencl
+fastapi
+uvicorn
