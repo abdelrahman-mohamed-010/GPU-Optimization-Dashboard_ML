@@ -4,3 +4,5 @@ pynvml
 pyopencl
 fastapi
 uvicorn
+docker
+pandas
