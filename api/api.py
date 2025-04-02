@@ -18,4 +18,4 @@ def get_gpu_state(gpu_id: str, db_manager: DatabaseManager = Depends(get_db)):
     state = db_manager.get_gpu_state(gpu_id)
     if state['static'] is None:
         raise HTTPException(status_code=404, detail=f"GPU not found against GPU id: {gpu_id}")
-    return state
+    return {"static": state["static"], "dynamic": state["dynamic"]}

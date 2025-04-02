@@ -4,6 +4,10 @@ from datetime import datetime, timedelta
 import pandas as pd
 import docker
 import time
+from db.database import DatabaseManager
+from gpu.models import GPU
+from config import SIMULATION_OUTPUT_DIR
+
 
 gpu_specs = {
     "RTX 4090": {"memory_total_gb": 24, "compute_tflops": 82, "bandwidth_gbps": 1008},
@@ -34,6 +38,18 @@ def generate_gpu_static_data(num_gpus=5000):
             print(f"Generated static data for {i} GPUs...")
     df_static = pd.DataFrame(static_data)
     return df_static
+
+def save_static_data_to_db(df_static):
+    db = DatabaseManager()
+    db.connect()
+    db.create_tables()
+    for _, row in df_static.iterrows():
+        gpu = GPU(id=row["id"], model=row["model"], memory_total_gb=row["memory_total_gb"],
+                  compute_tflops=row["compute_tflops"], bandwidth_gbps=row["bandwidth_gbps"])
+        db.insert_gpu_statics(gpu)
+    
+    db.close()
+
 
 def generate_gpu_dynamic_metrics(static_df, num_timesteps=10, interval_seconds=60):
     dynamic_data = []
@@ -103,7 +119,7 @@ def generate_task_gpu_pairs(num_tasks=1000000, static_df=None):
             "task_id": f"TASK_{task_id}",
             "gpu_id": gpu_id,
             "utilization": utilization,
-            "memory_total_gb": mem_used
+            "memory_used_gb": mem_used
         })
         if task_id % 100000 == 0:
             print(f"Generated {task_id} task-GPU pairs...")

@@ -6,3 +6,11 @@ fastapi
 uvicorn
 docker
 pandas
+scikit-learn
+#version depend on your cuda version
+torch 
+torchvision
+torchaudio
+gym
+stable-baselines3
+shimmy>=2.0

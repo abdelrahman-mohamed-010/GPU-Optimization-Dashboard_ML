@@ -15,25 +15,38 @@ class DatabaseManager:
         except Error as e:
             print(f"Error connecting to database {e}")
     
-    def create_table(self):
-        create_table_sql = """
+    def create_tables(self):
+        create_static_sql = """
         CREATE TABLE IF NOT EXISTS gpu_static (
-        id TEXT PRIMARY KEY,
-        model TEXT,
-        memory_total_gb REAL,
-        compute_tflops REAL,
-        bandwidth_gbps REAL
+            id TEXT PRIMARY KEY,
+            model TEXT,
+            memory_total_gb REAL,
+            compute_tflops REAL,
+            bandwidth_gbps REAL
         );
         """
+        create_dynamic_sql = """
+        CREATE TABLE IF NOT EXISTS gpu_dynamic (
+            id TEXT,
+            timestamp DATETIME,
+            utilization REAL,
+            memory_used_gb REAL,
+            temperature REAL,
+            power_w REAL,
+            FOREIGN KEY (id) REFERENCES gpu_static(id)
+        );
+        """
+
         try:
             cursor = self.conn.cursor()
-            cursor.execute(create_table_sql)
+            cursor.execute(create_static_sql)
+            cursor.execute(create_dynamic_sql)
             self.conn.commit()
-            print("Table gpu_static created or already exixts.")
+            print("Table gpu_static and gpu_dynamic created or already exixts.")
         except Exception as e:
             print(f"Error creating table: {e}")
     
-    def insert_gpu(self, gpu:GPU):
+    def insert_gpu_statics(self, gpu:GPU):
         insert_sql="""
         INSERT OR REPLACE INTO gpu_static (id,model, memory_total_gb, compute_tflops, bandwidth_gbps)
         VALUES (?,?,?,?,?)
@@ -46,34 +59,15 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error inserting GPU: {e}")
     
-    def create_dynamic_table(self):
-        create_table_sql = """
-        CREATE TABLE IF NOT EXISTS gpu_dynamic (
-            id TEXT,
-            timestamp DATETIME,
-            utilization REAL,
-            memory_used_gb REAL,
-            temperature REAL,
-            power_w REAL,
-            FOREIGN KEY (id) REFERENCES gpu_statics(id)
-        );
-        """
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(create_table_sql)
-            self.conn.commit()
-            print("Table gpu_dynamic created or already exists.")
-        except Error as e:
-            print(f"Error createing dynamic table: {e}")
     
-    def insert_dynamic(self, gpu_id, data):
+    def insert_gpu_dynamic(self, gpu_id, data):
         insert_sql = """
         INSERT INTO gpu_dynamic (id, timestamp, utilization, memory_used_gb, temperature, power_w)
         VALUES (?, datetime('now'),?, ?, ?, ?)
         """
         try:
             cursor = self.conn.cursor()
-            cursor.execute(insert_sql,(gpu_id, data['util'], data['mem'],data['temp'], data['power']))
+            cursor.execute(insert_sql,(gpu_id, data['utilization'], data['memory_used_gb'],data['temperature'], data['power_w']))
             self.conn.commit()
             print(f"Inserted  dynamic data for GPU {gpu_id}: {data}")
         except Error as e:

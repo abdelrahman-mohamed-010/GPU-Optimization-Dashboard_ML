@@ -1,7 +1,10 @@
 from gpu.detector import GPUDetector
-from gpu.profiler import GPUProfiler
+from gpu.simulation import generate_gpu_static_data, save_static_data_to_db
+from monitoring.monitor import monitor_gpus
+
 from db.database import DatabaseManager
 import asyncio
+import threading
 import time
 
 def  collect_static_data():
@@ -22,44 +25,38 @@ def  collect_static_data():
 def save_static_data(gpus):
     db_manager=DatabaseManager()
     db_manager.connect()
-    db_manager.create_table()
+    db_manager.create_tables()
     for gpu in gpus:
-        db_manager.insert_gpu(gpu)
+        db_manager.insert_gpu_statics(gpu)
     db_manager.close()
 
-async def dynamic_update_loop(gpus):
-    local_gpu_ids = [gpu.id for gpu in gpus if str(gpu.id).startswith("local")]
-    if not local_gpu_ids:
-        print("No local GPUs available for dynamic profiling.")
-        return
-    
-    profilers = {gpu_id: GPUProfiler(gpu_id) for gpu_id in local_gpu_ids}
+def start_monitoring_loop():
+    asyncio.run(monitor_gpus())
 
-    db_manager = DatabaseManager()
-    db_manager.connect()
-    db_manager.create_dynamic_table()
-
-    try:
-        print("Starting dynamic update loop. Press Ctrl+c to strop.")
-        while True:
-            for gpu_id, profiler in profilers.items():
-                data = profiler.get_dynamic()
-                print(f"Dynamic data for GPU {gpu_id}: {data}")
-                db_manager.insert_dynamic(gpu_id,data)
-            time.sleep(5)
-    except KeyboardInterrupt:
-        print("Dynamic update loo[ interrupted. Exiting.")
-    finally:
-        db_manager.close()
 def main():
     
-    gpus = collect_static_data()
-    if not gpus:
-        print("No GPUs detected on any host. Exiting.")
-        return
-    save_static_data(gpus)
+    ##commented part is for the single local gpu
+    # gpus = collect_static_data()
+    # if not gpus:
+    #     print("No GPUs detected on any host. Exiting.")
+    #     return
+    # save_static_data(gpus)
 
-    asyncio.run(dynamic_update_loop(gpus))
+    # simulation data
+    df_static = generate_gpu_static_data(num_gpus=5000)
+    # df_static.to_csv("static_gpu_data.csv", index=False) For save data into the csv format
+    save_static_data_to_db(df_static)
+
+    monitor_thread = threading.Thread(target=start_monitoring_loop,daemon=True)
+    monitor_thread.start()
+
+    print("Monitoring ans scheduling are running. Press Ctrl+C to exit.")
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Shutting down.....")
 
 if __name__ =="__main__":
     main()
