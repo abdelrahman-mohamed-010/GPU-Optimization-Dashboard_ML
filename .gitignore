@@ -1,0 +1,8 @@
+.venv
+*.pem
+*.db
+*.env
+*.csv
+*.pth
+__pycache__
+config.py
