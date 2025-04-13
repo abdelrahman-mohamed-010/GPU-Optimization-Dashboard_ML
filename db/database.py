@@ -1,94 +1,128 @@
 import sqlite3
 from sqlite3 import Error
 from config import DB_PATH
-from gpu.models import GPU
 
 class DatabaseManager:
-    def __init__(self,db_path=DB_PATH):
+    def __init__(self, db_path=DB_PATH):
         self.db_path = db_path
         self.conn = None
-    
+
     def connect(self):
         try:
-            self.conn = sqlite3.connect(self.db_path)
+            # Allow concurrent access with check_same_thread=False and enable WAL mode for better concurrency.
+            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.conn.execute("PRAGMA journal_mode=WAL;")
             print("Database connection established.")
         except Error as e:
-            print(f"Error connecting to database {e}")
-    
+            print(f"Error connecting to database: {e}")
+
     def create_tables(self):
-        create_static_sql = """
-        CREATE TABLE IF NOT EXISTS gpu_static (
-            id TEXT PRIMARY KEY,
-            model TEXT,
-            memory_total_gb REAL,
-            compute_tflops REAL,
-            bandwidth_gbps REAL
-        );
-        """
-        create_dynamic_sql = """
-        CREATE TABLE IF NOT EXISTS gpu_dynamic (
-            id TEXT,
-            timestamp DATETIME,
-            utilization REAL,
-            memory_used_gb REAL,
-            temperature REAL,
-            power_w REAL,
-            FOREIGN KEY (id) REFERENCES gpu_static(id)
-        );
-        """
+        try:
+            cursor = self.conn.cursor()
+            # Vendors table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS vendors (
+                    vendor_name TEXT PRIMARY KEY
+                );
+            """)
+            # Insert vendor names
+            vendors = [("Nvidia",), ("AMD",), ("Intel",)]
+            cursor.executemany("INSERT OR IGNORE INTO vendors (vendor_name) VALUES (?)", vendors)
 
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(create_static_sql)
-            cursor.execute(create_dynamic_sql)
-            self.conn.commit()
-            print("Table gpu_static and gpu_dynamic created or already exixts.")
-        except Exception as e:
-            print(f"Error creating table: {e}")
-    
-    def insert_gpu_statics(self, gpu:GPU):
-        insert_sql="""
-        INSERT OR REPLACE INTO gpu_static (id,model, memory_total_gb, compute_tflops, bandwidth_gbps)
-        VALUES (?,?,?,?,?)
-        """
-        try:
-            cursor=self.conn.cursor()
-            cursor.execute(insert_sql,(gpu.id,gpu.model,gpu.memory_total_gb, gpu.compue_tflops, gpu.bandwidth_gbps))
-            self.conn.commit()
-            print(f"Inserted GPU into the database: {gpu}")
-        except Exception as e:
-            print(f"Error inserting GPU: {e}")
-    
-    
-    def insert_gpu_dynamic(self, gpu_id, data):
-        insert_sql = """
-        INSERT INTO gpu_dynamic (id, timestamp, utilization, memory_used_gb, temperature, power_w)
-        VALUES (?, datetime('now'),?, ?, ?, ?)
-        """
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(insert_sql,(gpu_id, data['utilization'], data['memory_used_gb'],data['temperature'], data['power_w']))
-            self.conn.commit()
-            print(f"Inserted  dynamic data for GPU {gpu_id}: {data}")
-        except Error as e:
-            print(f"Error insearting dynamic data for GPU {gpu_id}:{e}")
-    
+            # Clusters table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS clusters (
+                    cluster_name TEXT PRIMARY KEY
+                );
+            """)
 
-    def get_gpu_state(self,gpu_id:str):
-        try: 
-            static_columns=["id","model" ,"memory_total_gb","compute_tflops","bandwidth_gbps"]
-            dynamic_columns=["id", "timestamp", "utilization", "memory_used_gb", "temperature", "power_w"]
-            cursor = self.conn.cursor()
-            static = cursor.execute("SELECT * FROM gpu_static WHERE id = ?",(gpu_id,)).fetchone()
-            dynamic = cursor.execute("SELECT * FROM gpu_dynamic WHERE id = ? ORDER BY timestamp DESC LIMIT 1", (gpu_id,)).fetchone()
-            
-            # Map rows to dictionaries
-            static_dict = dict(zip(static_columns, static)) if static else None
-            dynamic_dict = dict(zip(dynamic_columns, dynamic)) if dynamic else None
-            return {"static":static_dict, "dynamic":dynamic_dict}
+            # Racks table, each rack belongs to one cluster
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS racks (
+                    rack_id TEXT PRIMARY KEY,
+                    cluster_name TEXT,
+                    FOREIGN KEY(cluster_name) REFERENCES clusters(cluster_name)
+                );
+            """)
+
+            # GPUs table: Each GPU has a unique UUID as primary key, belongs to a rack, and references its vendor.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS gpus (
+                    gpu_id TEXT PRIMARY KEY,
+                    rack_id TEXT,
+                    vendor TEXT,
+                    model TEXT,
+                    memory_total_gb INTEGER,
+                    compute_tflops REAL,
+                    bandwidth_gbps INTEGER,
+                    FOREIGN KEY(rack_id) REFERENCES racks(rack_id),
+                    FOREIGN KEY(vendor) REFERENCES vendors(vendor_name)
+                );
+            """)
+
+            # GPU metrics table: Logs dynamic metrics over time.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS gpu_metrics (
+                    metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    gpu_id TEXT,
+                    utilization REAL,
+                    memory_used_gb REAL,
+                    temperature REAL,
+                    power_watts REAL,
+                    timestamp DATETIME,
+                    FOREIGN KEY(gpu_id) REFERENCES gpus(gpu_id)
+                );
+            """)
+            self.conn.commit()
+            print("All tables created or already exist.")
         except Error as e:
-            print(f"Error while featching GPU static and dynamic stats, {gpu_id}: {e}") 
-    
+            print(f"Error creating tables: {e}")
+
+    def insert_cluster(self, cluster_name):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("INSERT OR IGNORE INTO clusters (cluster_name) VALUES (?)", (cluster_name,))
+            self.conn.commit()
+        except Error as e:
+            print(f"Error inserting cluster {cluster_name}: {e}")
+
+    def insert_rack(self, rack_id, cluster_name):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("INSERT OR IGNORE INTO racks (rack_id, cluster_name) VALUES (?, ?)", (rack_id, cluster_name))
+            self.conn.commit()
+        except Error as e:
+            print(f"Error inserting rack {rack_id}: {e}")
+
+    def insert_gpu(self, gpu_id, rack_id, vendor, model, memory_total_gb, compute_tflops, bandwidth_gbps):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO gpus 
+                (gpu_id, rack_id, vendor, model, memory_total_gb, compute_tflops, bandwidth_gbps)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (gpu_id, rack_id, vendor, model, memory_total_gb, compute_tflops, bandwidth_gbps))
+            self.conn.commit()
+        except Error as e:
+            print(f"Error inserting GPU {gpu_id}: {e}")
+
+    def insert_gpu_metrics_batch(self, records):
+        try:
+            cursor = self.conn.cursor()
+            cursor.executemany("""
+                INSERT INTO gpu_metrics (gpu_id, utilization, memory_used_gb, temperature, power_watts, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, records)
+            self.conn.commit()
+        except Error as e:
+            print(f"Error inserting metrics batch: {e}")
+
+    def get_all_gpus(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT gpu_id, model, memory_total_gb FROM gpus")
+        records = cursor.fetchall()
+        return records
+
     def close(self):
         if self.conn:
             self.conn.close()
