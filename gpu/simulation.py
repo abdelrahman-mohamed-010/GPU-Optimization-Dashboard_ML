@@ -1,8 +1,9 @@
 import random
 import uuid
 from db.database import DatabaseManager
+from config import DB_PATH
 
-# GPU specifications dictionary (as above)
+# GPU specifications dictionary (as provided; ensure this dictionary is defined above)
 gpu_specs = {
     "RTX 4090": {"memory_total_gb": 24, "compute_tflops": 82, "bandwidth_gbps": 1008},
     "RTX 4080": {"memory_total_gb": 16, "compute_tflops": 49, "bandwidth_gbps": 720},
@@ -55,6 +56,7 @@ gpu_specs = {
     "Intel Arc A770M": {"memory_total_gb": 8, "compute_tflops": 11, "bandwidth_gbps": 256},
     "NVIDIA GeForce GTX 1660": {"memory_total_gb": 6, "compute_tflops": 5, "bandwidth_gbps": 192}
 }
+
 # Fixed rack codes for each cluster (10 racks per cluster)
 rack_codes = ["A12", "B08", "C04", "D09", "E07", "F05", "G06", "H03", "I10", "J11"]
 
@@ -73,7 +75,16 @@ def generate_static_data():
     db.connect()
     db.create_tables()
 
-    # Generate 50 clusters using directions and Greek letters.
+    # Check if clusters table already contains data.
+    cur = db.conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM clusters")
+    count = cur.fetchone()[0]
+    if count > 0:
+        print("Static data already exists. Skipping static data generation.")
+        db.close()
+        return
+
+    # Generate 50 unique cluster names using directions and Greek letters.
     directions = ["East", "West", "North", "South", "Central"]
     greek_letters = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", "Iota", "Kappa"]
     clusters = [f"{d} {letter} Datacenter" for d in directions for letter in greek_letters]
@@ -90,8 +101,6 @@ def generate_static_data():
             db.insert_rack(rack_id, cluster)
 
     # Insert GPUs: For each rack, 100 GPUs with unique UUIDs.
-    db_conn = db.conn
-    cur = db_conn.cursor()
     cur.execute("SELECT rack_id FROM racks")
     all_racks = cur.fetchall()
 

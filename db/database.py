@@ -9,7 +9,7 @@ class DatabaseManager:
 
     def connect(self):
         try:
-            # Allow concurrent access with check_same_thread=False and enable WAL mode for better concurrency.
+            # Enable multi-threaded access and WAL mode for better concurrency.
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.execute("PRAGMA journal_mode=WAL;")
             print("Database connection established.")
@@ -25,18 +25,17 @@ class DatabaseManager:
                     vendor_name TEXT PRIMARY KEY
                 );
             """)
-            # Insert vendor names
             vendors = [("Nvidia",), ("AMD",), ("Intel",)]
             cursor.executemany("INSERT OR IGNORE INTO vendors (vendor_name) VALUES (?)", vendors)
-
+            
             # Clusters table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS clusters (
                     cluster_name TEXT PRIMARY KEY
                 );
             """)
-
-            # Racks table, each rack belongs to one cluster
+            
+            # Racks table (10 racks per cluster)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS racks (
                     rack_id TEXT PRIMARY KEY,
@@ -44,8 +43,8 @@ class DatabaseManager:
                     FOREIGN KEY(cluster_name) REFERENCES clusters(cluster_name)
                 );
             """)
-
-            # GPUs table: Each GPU has a unique UUID as primary key, belongs to a rack, and references its vendor.
+            
+            # GPUs table: Each GPU has a unique UUID and foreign keys to racks and vendors.
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS gpus (
                     gpu_id TEXT PRIMARY KEY,
@@ -59,8 +58,8 @@ class DatabaseManager:
                     FOREIGN KEY(vendor) REFERENCES vendors(vendor_name)
                 );
             """)
-
-            # GPU metrics table: Logs dynamic metrics over time.
+            
+            # GPU metrics table: Logs dynamic metrics.
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS gpu_metrics (
                     metric_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +70,16 @@ class DatabaseManager:
                     power_watts REAL,
                     timestamp DATETIME,
                     FOREIGN KEY(gpu_id) REFERENCES gpus(gpu_id)
+                );
+            """)
+            
+            # RL performance table: Logs performance metrics from Federated PPO simulation.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rl_performance (
+                    performance_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    day TEXT,
+                    average_reward REAL,
+                    timestamp DATETIME
                 );
             """)
             self.conn.commit()
@@ -98,8 +107,7 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT OR REPLACE INTO gpus 
-                (gpu_id, rack_id, vendor, model, memory_total_gb, compute_tflops, bandwidth_gbps)
+                INSERT OR REPLACE INTO gpus (gpu_id, rack_id, vendor, model, memory_total_gb, compute_tflops, bandwidth_gbps)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (gpu_id, rack_id, vendor, model, memory_total_gb, compute_tflops, bandwidth_gbps))
             self.conn.commit()
@@ -117,11 +125,21 @@ class DatabaseManager:
         except Error as e:
             print(f"Error inserting metrics batch: {e}")
 
+    def insert_rl_performance(self, day, average_reward, timestamp):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO rl_performance (day, average_reward, timestamp)
+                VALUES (?, ?, ?)
+            """, (day, average_reward, timestamp))
+            self.conn.commit()
+        except Error as e:
+            print(f"Error inserting RL performance: {e}")
+
     def get_all_gpus(self):
         cursor = self.conn.cursor()
         cursor.execute("SELECT gpu_id, model, memory_total_gb FROM gpus")
-        records = cursor.fetchall()
-        return records
+        return cursor.fetchall()
 
     def close(self):
         if self.conn:

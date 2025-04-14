@@ -39,12 +39,18 @@ const GPULoadBalancerDashboard = () => {
   ];
   
   // Cluster health metrics
-  const clusterHealth = [
+  const [clusterHealth, setclusterHealthStats] = useState<any[]>([
     { name: 'East Datacenter', status: 'Healthy', utilization: 82, temperature: 'Normal', alerts: 0 },
     { name: 'West Datacenter', status: 'Warning', utilization: 93, temperature: 'High', alerts: 2 },
     { name: 'North Datacenter', status: 'Healthy', utilization: 75, temperature: 'Normal', alerts: 0 },
     { name: 'South Datacenter', status: 'Critical', utilization: 96, temperature: 'Critical', alerts: 5 },
-  ];
+  ]);
+  // const clusterHealth = [
+    // { name: 'East Datacenter', status: 'Healthy', utilization: 82, temperature: 'Normal', alerts: 0 },
+    // { name: 'West Datacenter', status: 'Warning', utilization: 93, temperature: 'High', alerts: 2 },
+    // { name: 'North Datacenter', status: 'Healthy', utilization: 75, temperature: 'Normal', alerts: 0 },
+    // { name: 'South Datacenter', status: 'Critical', utilization: 96, temperature: 'Critical', alerts: 5 },
+  // ];
 
   const utilizationData = [
     { time: '00:00', nvidia: 72, amd: 68, intel: 65 },
@@ -100,8 +106,8 @@ const GPULoadBalancerDashboard = () => {
     setLoading(true);
     try {
       // Replace the URL with the actual endpoint
-     const response = await axios.get('http://localhost:8000/overview_stats');
-     console.log("Call inside setLoading True", response.data.companies.NVIDIA);
+     const response = await axios.get('https://ea56-157-10-7-69.ngrok-free.app/overview');
+     console.log("Call inside setLoading True", response.data.vendor_counts.Nvidia);
 
       
       // Assuming the response contains the following fields:
@@ -116,16 +122,23 @@ const GPULoadBalancerDashboard = () => {
       };
       gpuDistributionAPI([
   
-        { name: 'NVIDIA', value: response.data.companies.NVIDIA, color: '#76b900' },
-        { name: 'AMD', value: response.data.companies.AMD, color: '#ED1C24' },
-        { name: 'Intel', value: response.data.companies.INTEL, color: '#0071c5' },
+        { name: 'NVIDIA', value: response.data.vendor_counts.Nvidia, color: '#76b900' },
+        { name: 'AMD', value: response.data.vendor_counts.AMD, color: '#ED1C24' },
+        { name: 'Intel', value: response.data.vendor_counts.Intel, color: '#0071c5' },
       ]);
       // Update the overview stats with the values from the API response
       setOverviewStats([
         { name: 'Total GPUs', value: response.data.total_gpus, icon: <Server size={20} />, color: 'bg-blue-500', trend: '+384 from last week' },
         { name: 'Active Jobs', value: mockData.activeJobs, icon: <Activity size={20} />, color: 'bg-green-500', trend: '+12% from yesterday' },
-        { name: 'Avg. Utilization', value: response.data.average_utilization+'%', icon: <Cpu size={20} />, color: 'bg-purple-500', trend: '+3.2% this week' },
-        { name: 'Power Efficiency', value: response.data.power_efficiency+'%', icon: <Zap size={20} />, color: 'bg-amber-500', trend: 'Improved 2.1% today' },
+        { name: 'Avg. Utilization', value: response.data.avg_utilization+'%', icon: <Cpu size={20} />, color: 'bg-purple-500', trend: '+3.2% this week' },
+        { name: 'Power Efficiency', value: response.data.avg_power_efficiency+'%', icon: <Zap size={20} />, color: 'bg-amber-500', trend: 'Improved 2.1% today' },
+      ]);
+
+      setclusterHealthStats([
+        { name: response.data.cluster_health[0].cluster_name, status: response.data.cluster_health[0].status, utilization: response.data.cluster_health[0].current_utilization, temperature: response.data.cluster_health[0].current_temperature, alerts: response.data.cluster_health[0].alerts },
+        { name: response.data.cluster_health[1].cluster_name, status: response.data.cluster_health[1].status, utilization: response.data.cluster_health[1].current_utilization, temperature: response.data.cluster_health[1].current_temperature, alerts: response.data.cluster_health[1].alerts },
+        { name: response.data.cluster_health[2].cluster_name, status: response.data.cluster_health[2].status, utilization: response.data.cluster_health[2].current_utilization, temperature: response.data.cluster_health[2].current_temperature, alerts: response.data.cluster_health[2].alerts },
+        { name: response.data.cluster_health[3].cluster_name, status: response.data.cluster_health[3].status, utilization: response.data.cluster_health[3].current_utilization, temperature: response.data.cluster_health[3].current_temperature, alerts: response.data.cluster_health[3].alerts },
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -382,7 +395,7 @@ const GPULoadBalancerDashboard = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-500">NVIDIA Avg. Utilization</p>
-                      <p className="text-2xl font-semibold mt-1">85.4%</p>
+                      <p className="text-2xl font-semibold mt-1"> 85.4%</p>
                     </div>
                     <span className="text-green-600 font-medium text-sm">+2.8% This Week</span>
                   </div>
